@@ -28,11 +28,10 @@ def listen_loop(sock, stop_event):
 
 def main():
     username = input("Введите имя: ").strip()
-    room = input("Введите комнату: ").strip()
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         sock.connect((HOST, PORT))
-        proto.send_message(sock, "JOIN", f"{username}_{room}".encode())
+        proto.send_message(sock, "JOIN", username.encode())
     except (ConnectionRefusedError, OSError) as e:
         print(f"Не удалось подключиться: {e}")
         return
@@ -40,7 +39,7 @@ def main():
     stop_event = threading.Event()
     threading.Thread(target=listen_loop, args=(sock, stop_event), daemon=True).start()
 
-    print("Команды: /list, /quit, /room <new_room>. Остальной текст - сообщение в чат.")
+    print("Команды: /list, /quit, /room, /delr. Остальной текст - сообщение в чат.")
     try:
         while not stop_event.is_set():
             line = input("> ")
@@ -49,12 +48,12 @@ def main():
                 break
             elif line == "/list":
                 proto.send_message(sock, "LIST")
-            elif line.startswith("/room"):
-                c, new_room = line.split()
-                proto.send_message(sock, "ROOM", new_room.encode())
-            elif line.startswith("/delr"):
-                c, room_to_delete = line.split()
-                proto.send_message(sock, "DELR", room_to_delete.encode())
+            elif line[:5] == "/room":
+                c, room_name = line.split()
+                proto.send_message(sock, "ROOM", room_name.encode())
+            elif line[:5] == "/delr":
+                c, room_name = line.split()
+                proto.send_message(sock, "DELR", room_name.encode())
             elif line:
                 proto.send_message(sock, "TEXT", line.encode())
     except (EOFError, KeyboardInterrupt, BrokenPipeError, OSError):

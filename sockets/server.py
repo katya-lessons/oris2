@@ -8,17 +8,19 @@ PORT = 5555
 clients = {}
 clients_lock = threading.Lock()
 
-rooms = {"lobby": []}
+rooms = {'main': []}
 rooms_lock = threading.Lock()
 
 
-def broadcast(command, text, include: list, exclude=None):
+def broadcast(command, text, room: str, exclude=None):
     payload = text.encode("utf-8")
-    targets= []
+
+    with rooms_lock:
+        members = rooms[room]
+
     with clients_lock:
-        for client_sock, client_name in clients.items():
-            if client_sock != exclude and client_name in include:
-                targets.append(client_sock)
+        targets = [s for s in clients if s is not exclude and s in members]
+
     for sock in targets:
         try:
             proto.send_message(sock, command, payload)
@@ -28,7 +30,7 @@ def broadcast(command, text, include: list, exclude=None):
 
 def handle_client(sock, addr):
     username = None
-    room = None
+    room  = 'main'
 
     try:
         first = proto.recv_message(sock)
@@ -36,8 +38,7 @@ def handle_client(sock, addr):
             proto.send_message(sock, "ERRO", b"first command must be JOIN")
             return
 
-        username, room_name = first[1].decode("utf-8", errors="replace").strip().split("_")
-        room = room_name
+        username = first[1].decode("utf-8", errors="replace").strip()
         with clients_lock:
             if not username or username in clients.values():
                 proto.send_message(sock, "ERRO", b"invalid or taken username")
@@ -45,13 +46,10 @@ def handle_client(sock, addr):
             clients[sock] = username
 
         with rooms_lock:
-            if room_name in rooms:
-                rooms[room_name].append(username)
-            else:
-                rooms[room_name] = [username]
+            rooms[room].append(sock)
 
         proto.send_message(sock, "TEXT", f"* вы вошли как {username}".encode())
-        broadcast("TEXT", f"* {username} присоединился", include=rooms[room_name], exclude=sock)
+        broadcast("TEXT", f"* {username} присоединился", room, exclude=sock)
         print(f"[+] {username} присоединился ({addr})")
 
         while True:
@@ -63,7 +61,7 @@ def handle_client(sock, addr):
             command, payload = msg
             if command == "TEXT":
                 text = payload.decode("utf-8", errors="replace")
-                broadcast("TEXT", f"{username}: {text}", include=rooms[room_name], exclude=sock)
+                broadcast("TEXT", f"{username}: {text}", room, exclude=sock)
             elif command == "LIST":
                 with clients_lock:
                     names = list(clients.values())
@@ -74,28 +72,36 @@ def handle_client(sock, addr):
                 break
             elif command == "DELR":
                 room_name = payload.decode("utf-8", errors="replace")
-                if room_name == 'lobby':
-                    proto.send_message(sock, "ERRO", "эту комнату нельзя удалить".encode())
+                if room_name == 'main':
+                    proto.send_message(sock, "ERRO", f"Основную комнату main удалить нельзя".encode())
                 else:
                     with rooms_lock:
-                        for user in rooms[room_name]:
-                            rooms['lobby'].append(user)
-                        old_room = rooms[room_name]
-                        del rooms[room_name]
-                    broadcast("TEXT", "* вы были перемещены в комнату lobby", include=old_room)
-                    print(f"[-] {room_name} была удалена. Список доступных комнат: {', '.join(rooms)}")
+                        if room_name in rooms:
+                            if rooms[room_name]:
+                                proto.send_message(sock, "ERRO", f"комната {room_name} содержит участников".encode())
+                            else:
+                                del rooms[room_name]
+                                proto.send_message(sock, "TEXT", f"* комната {room_name} была удалена".encode())
+                        else:
+                            proto.send_message(sock, "ERRO", f"комната {room_name} не существует".encode())
+
             elif command == "ROOM":
                 room_name = payload.decode("utf-8", errors="replace")
                 with rooms_lock:
-                    if room is not None:
-                        rooms[room].remove(username)
-                    if payload in rooms:
-                        rooms[room_name].append(username)
+                    if room_name in rooms:
+                        rooms[room_name].append(sock)
+                        rooms[room].remove(sock)
                     else:
-                        rooms[room_name] = [username]
+                        rooms[room_name] = [sock]
+
+                broadcast("TEXT", f"* {username} покинул комнату", room, exclude=sock)
                 room = room_name
-                print(f"[*] {username} перешёл в комнату {room}")
-                proto.send_message(sock, "TEXT", f"* вы теперь в комнате {room}".encode())
+                broadcast("TEXT", f"* {username} присоединился", room, exclude=sock)
+                proto.send_message(sock, "TEXT", f"* вы зашли в комнату {room}".encode())
+                print(f"[i] {username} перешёл в комнату {room}")
+                with rooms_lock:
+                    room_names = list(rooms.keys())
+                print(f"[i] доступные комнаты: {', '.join(room_names)}")
             else:
                 proto.send_message(sock, "ERRO", f"unknown command {command}".encode())
 
@@ -107,12 +113,13 @@ def handle_client(sock, addr):
         with clients_lock:
             clients.pop(sock, None)
         sock.close()
-        if username and room:
-            broadcast("TEXT", f"* {username} покинул чат", include=rooms[room])
+        if username:
+            broadcast("TEXT", f"* {username} покинул чат", room)
 
 
 def main():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server.bind((HOST, PORT))
         server.listen()
         print(f"[*] сервер слушает {HOST}:{PORT}")
