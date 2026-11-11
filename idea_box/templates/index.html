@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}
+Главная — IdeaBox
+{% endblock %}
+
+{% block content %}
+
+<h2>Мои идеи</h2>
+
+{% if ideas %}
+
+    {% for idea in ideas %}
+        <div>
+            <h3>{{ idea.title }}</h3>
+            <p>{{ idea.description }}</p>
+            <a href="{{ url_for('detail', idea_id=idea.id) }}">Подробнее</a>
+        </div>
+        <hr>
+    {% endfor %}
+
+{% else %}
+    <p>Пока идей нет.</p>
+{% endif %}
+
+{% endblock %}

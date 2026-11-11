@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}
+Добавить идею
+{% endblock %}
+
+{% block content %}
+
+<h2>Новая идея</h2>
+
+{% for error in errors|default([]) %}
+    <p>{{ error }}</p>
+{% endfor %}
+
+<form method="POST">
+
+    <p>
+        <label>Название</label>
+        <input type="text" name="title" value="{{ title|default('') }}">
+    </p>
+
+    <p>
+        <label>Описание</label>
+        <textarea name="description">{{ description|default('') }}</textarea>
+    </p>
+
+    <button type="submit">Сохранить</button>
+
+</form>
+
+{% endblock %}

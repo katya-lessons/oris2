@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>{% block title %}IdeaBox{% endblock %}</title>
+</head>
+<body>
+
+    <header>
+        <h1>IdeaBox</h1>
+        <nav>
+            <a href="{{ url_for('index') }}">Главная</a>
+            <a href="{{ url_for('add_idea') }}">Добавить идею</a>
+        </nav>
+    </header>
+
+    <hr>
+
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+
+</body>
+</html>
